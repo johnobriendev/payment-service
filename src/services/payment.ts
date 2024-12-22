@@ -1,6 +1,10 @@
 // src/services/payment.ts
+import { PrismaClient } from '@prisma/client';
 import stripe from '../config/stripe';
 import { calculateAmount } from '../utils/pricing';
+
+const prisma = new PrismaClient();
+
 
 export interface PaymentIntentResult {
   clientSecret: string;
@@ -29,6 +33,18 @@ export async function createPaymentIntent(
         enabled: true
       }
     });
+
+    // Create booking record in database
+    await prisma.booking.create({
+      data: {
+        duration,
+        isPackage,
+        amount: amountInDollars,
+        paymentIntentId: paymentIntent.id,
+        status: 'PENDING'
+      }
+    });
+
     
     if (!paymentIntent.client_secret) {
       throw new PaymentError('Missing client secret in payment intent');
