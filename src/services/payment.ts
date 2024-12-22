@@ -1,3 +1,4 @@
+// src/services/payment.ts
 import stripe from '../config/stripe';
 import { calculateAmount } from '../utils/pricing';
 
@@ -38,9 +39,9 @@ export async function createPaymentIntent(
       amount: amountInDollars
     };
     
-  } catch (error) {
+  } catch (error: unknown) {
     // If the error is from our pricing calculation, throw it as is
-    if (error.message === 'Invalid lesson duration') {
+    if (error instanceof Error && error.message === 'Invalid lesson duration') {
       throw error;
     }
     
