@@ -5,14 +5,18 @@ import { calculateAmount } from '../../utils/pricing';
 
 // Mock the Stripe module
 jest.mock('../../config/stripe', () => ({
-  paymentIntents: {
-    create: jest.fn()
-  }
+ 
+    paymentIntents: {
+      create: jest.fn()
+    }
+  
 }));
+
 
 describe('Payment Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    //(stripe.paymentIntents.create as jest.Mock).mockReset(); //this line caused an error
   });
 
   it('should create a payment intent for a single lesson', async () => {

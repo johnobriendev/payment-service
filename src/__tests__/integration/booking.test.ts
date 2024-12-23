@@ -18,13 +18,17 @@ describe('Booking Integration', () => {
     const duration = 30;
     const isPackage = false;
     const amount = calculateAmount(duration, isPackage);
+
+    // Generate a unique payment intent ID for each test
+    const uniquePaymentIntentId = `pi_test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     
     const booking = await prisma.booking.create({
       data: {
         duration,
         isPackage,
         amount,
-        paymentIntentId: 'pi_test_123' // replace this with real Stripe IDs later
+        paymentIntentId: uniquePaymentIntentId // replace this with real Stripe IDs later
       }
     });
 
@@ -34,11 +38,14 @@ describe('Booking Integration', () => {
   });
 
   it('should update booking status correctly', async () => {
+    // Generate another unique payment intent ID
+    const uniquePaymentIntentId = `pi_test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     const booking = await prisma.booking.create({
       data: {
         duration: 30,
         amount: 30,
-        paymentIntentId: 'pi_test_456'
+        paymentIntentId: uniquePaymentIntentId
       }
     });
 
