@@ -3,12 +3,20 @@ import { PrismaClient } from '@prisma/client';
 import stripe from '../config/stripe';
 import { calculateAmount } from '../utils/pricing';
 
-const prisma = new PrismaClient();
-
 
 export interface PaymentIntentResult {
   clientSecret: string;
   amount: number;
+}
+
+interface StripeWebhookEvent {
+  type: string;
+  data: {
+    object: {
+      id: string;
+      status: string;
+    };
+  };
 }
 
 export class PaymentError extends Error {
@@ -17,6 +25,8 @@ export class PaymentError extends Error {
     this.name = 'PaymentError';
   }
 }
+
+const prisma = new PrismaClient();
 
 export async function createPaymentIntent(
   duration: number,
@@ -65,4 +75,38 @@ export async function createPaymentIntent(
     throw new PaymentError('Failed to create payment intent');
   }
   
+}
+
+
+
+export async function handleStripeWebhook(event: StripeWebhookEvent): Promise<void> {
+  const { type, data } = event;
+  const paymentIntent = data.object;
+
+  try {
+    switch (type) {
+      case 'payment_intent.succeeded':
+        await prisma.booking.update({
+          where: { paymentIntentId: paymentIntent.id },
+          data: { status: 'COMPLETED' }
+        });
+        break;
+
+      case 'payment_intent.payment_failed':
+        await prisma.booking.update({
+          where: { paymentIntentId: paymentIntent.id },
+          data: { status: 'FAILED' }
+        });
+        break;
+
+      // We can add more webhook event types here as needed
+      default:
+        console.log(`Unhandled webhook event type: ${type}`);
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      console.error(`Error processing webhook: ${error.message}`);
+    }
+    throw new PaymentError('Failed to process webhook event');
+  }
 }
