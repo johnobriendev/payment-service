@@ -1,6 +1,6 @@
 // src/controllers/paymentController.ts
 import { Request, Response } from 'express';
-import { createPaymentIntent, PaymentError, handleStripeWebhook } from '../services/payment';
+import { createPaymentIntent, PaymentError, handleStripeWebhook, createCheckoutSession } from '../services/payment';
 
 interface CreatePaymentRequest {
   duration: number;
@@ -90,6 +90,49 @@ export async function webhookController(req: Request, res: Response): Promise<vo
     res.status(400).json({
       success: false,
       error: 'Failed to process webhook'
+    });
+  }
+}
+
+export async function createCheckoutController(req: Request, res: Response): Promise<void> {
+  const { duration, isPackage } = req.body;
+
+  // Validate input just like in our original controller
+  if (!duration) {
+    res.status(400).json({
+      success: false,
+      error: 'Duration is required'
+    });
+    return;
+  }
+
+  if (![30, 45, 60].includes(duration)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid duration. Must be 30, 45, or 60 minutes'
+    });
+    return;
+  }
+
+  if (typeof isPackage !== 'boolean') {
+    res.status(400).json({
+      success: false,
+      error: 'isPackage must be a boolean value'
+    });
+    return;
+  }
+
+  try {
+    // Create the checkout session using our service
+    const session = await createCheckoutSession(duration, isPackage);
+    
+    // Return the session ID to the client
+    res.json({ sessionId: session.sessionId });
+  } catch (error) {
+    console.error('Checkout session creation error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create checkout session'
     });
   }
 }

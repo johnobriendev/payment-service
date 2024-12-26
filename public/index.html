@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Music Lesson Booking</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+           body {
+              font-family: Arial, sans-serif;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+          }
+          .lesson-options {
+              margin: 20px 0;
+              padding: 15px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+          }
+          button {
+              padding: 10px 20px;
+              margin: 5px;
+              cursor: pointer;
+          }
+          #payment-form {
+              margin-top: 20px;
+              padding: 20px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+          }
+          #card-element {
+              padding: 10px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              margin: 10px 0;
+          }
+          #payment-message {
+              color: rgb(105, 115, 134);
+              font-size: 16px;
+              line-height: 20px;
+              padding-top: 12px;
+          }
+    </style>
+</head>
+<body>
+    <h1>Book a Music Lesson</h1>
+    
+    <div class="lesson-options">
+        <h2>Single Lessons</h2>
+        <button onclick="bookLesson(30, false)">30 Minutes ($30)</button>
+        <button onclick="bookLesson(45, false)">45 Minutes ($45)</button>
+        <button onclick="bookLesson(60, false)">60 Minutes ($60)</button>
+    </div>
+
+    <div class="lesson-options">
+        <h2>Lesson Packages (4 Lessons)</h2>
+        <button onclick="bookLesson(30, true)">30 Minutes ($110)</button>
+        <button onclick="bookLesson(45, true)">45 Minutes ($170)</button>
+        <button onclick="bookLesson(60, true)">60 Minutes ($220)</button>
+    </div>
+
+    <script>
+        const stripe = Stripe('your_publishable_key_here');
+
+        async function bookLesson(duration, isPackage) {
+            try {
+                const response = await fetch('http://localhost:3000/api/payments/create-checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ duration, isPackage })
+                });
+                
+                const session = await response.json();
+                if (session.sessionId) {
+                    // Redirect to Checkout
+                    stripe.redirectToCheckout({ sessionId: session.sessionId });
+                } else {
+                    alert(session.error);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error booking lesson. Please try again.');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -2,14 +2,17 @@
 import stripe from '../../config/stripe';
 import { createPaymentIntent } from '../../services/payment';
 import { calculateAmount } from '../../utils/pricing';
+import { createMockStripePaymentIntent } from '../mocks/stripeMock';
+
 
 // Mock the Stripe module
+const mockCreate = jest.fn();
 jest.mock('../../config/stripe', () => ({
- 
+  default: {
     paymentIntents: {
-      create: jest.fn()
+      create: mockCreate
     }
-  
+  }
 }));
 
 
@@ -20,19 +23,17 @@ describe('Payment Service', () => {
   });
 
   it('should create a payment intent for a single lesson', async () => {
-    const mockPaymentIntent = {
-      id: 'pi_test_123',
-      client_secret: 'test_secret_123',
-      amount: 3000,
-      currency: 'usd'
-    };
+    // Use our helper to create a consistent mock payment intent
+    // For a 30-minute lesson, the amount should be 3000 cents ($30.00)
+    const mockPaymentIntent = createMockStripePaymentIntent(3000);
+   
     
-    (stripe.paymentIntents.create as jest.Mock).mockResolvedValue(mockPaymentIntent);
+    mockCreate.mockResolvedValue(mockPaymentIntent);
 
     const paymentIntent = await createPaymentIntent(30, false);
 
     // Check if Stripe was called with correct amount for single lesson
-    expect(stripe.paymentIntents.create).toHaveBeenCalledWith({
+    expect(mockCreate).toHaveBeenCalledWith({
       amount: 3000, // $30.00 in cents
       currency: 'usd',
       automatic_payment_methods: {
@@ -41,25 +42,21 @@ describe('Payment Service', () => {
     });
 
     expect(paymentIntent).toEqual({
-      clientSecret: 'test_secret_123',
+      clientSecret: mockPaymentIntent.client_secret,
       amount: 30
     });
   });
 
   it('should create a payment intent for a lesson package', async () => {
-    const mockPaymentIntent = {
-      id: 'pi_test_456',
-      client_secret: 'test_secret_456',
-      amount: 11000,
-      currency: 'usd'
-    };
+    // For a 30-minute lesson package, the amount should be 11000 cents ($110.00)
+    const mockPaymentIntent = createMockStripePaymentIntent(11000);
     
-    (stripe.paymentIntents.create as jest.Mock).mockResolvedValue(mockPaymentIntent);
+    mockCreate.mockResolvedValue(mockPaymentIntent);
 
     const paymentIntent = await createPaymentIntent(30, true);
 
     // Check if Stripe was called with correct amount for package
-    expect(stripe.paymentIntents.create).toHaveBeenCalledWith({
+    expect(mockCreate).toHaveBeenCalledWith({
       amount: 11000, // $110.00 in cents
       currency: 'usd',
       automatic_payment_methods: {
@@ -70,7 +67,7 @@ describe('Payment Service', () => {
 
   it('should handle Stripe API errors gracefully', async () => {
     // Simulate a Stripe API error
-    (stripe.paymentIntents.create as jest.Mock).mockRejectedValue(
+    mockCreate.mockRejectedValue(
       new Error('Stripe API error')
     );
 

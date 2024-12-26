@@ -3,14 +3,23 @@ import { PrismaClient } from '@prisma/client';
 import stripe from '../config/stripe';
 import { calculateAmount } from '../utils/pricing';
 
-
+// Interfaces to define the shape of our data structures
+// This interface defines what we return after creating a payment intent
 export interface PaymentIntentResult {
   clientSecret: string;
   amount: number;
 }
 
-interface StripeWebhookEvent {
+// Base interface for all Stripe webhook events
+interface BaseStripeEvent {
   type: string;
+  data: {
+    object: any;
+  };
+}
+
+// Specific interface for payment intent webhook events
+interface PaymentIntentEvent extends BaseStripeEvent {
   data: {
     object: {
       id: string;
@@ -19,6 +28,26 @@ interface StripeWebhookEvent {
   };
 }
 
+// Specific interface for checkout session webhook events
+interface CheckoutSessionEvent extends BaseStripeEvent {
+  data: {
+    object: {
+      id: string;
+      payment_intent?: string;  // Optional because it might not always be present
+      status: string;
+    };
+  };
+}
+
+// Union type that can be either type of webhook event
+type StripeWebhookEvent = PaymentIntentEvent | CheckoutSessionEvent;
+
+// Interface for what we return after creating a checkout session
+export interface CheckoutSessionResult {
+  sessionId: string;
+}
+
+// Custom error class for payment-related errors
 export class PaymentError extends Error {
   constructor(message: string) {
     super(message);
@@ -26,13 +55,15 @@ export class PaymentError extends Error {
   }
 }
 
+// Initialize our database client
 const prisma = new PrismaClient();
 
+// Function to create a payment intent for the custom payment form
 export async function createPaymentIntent(
   duration: number,
   isPackage: boolean
 ): Promise<PaymentIntentResult> {
-  try{
+  try {
     const amountInDollars = calculateAmount(duration, isPackage);
     const amountInCents = amountInDollars * 100;
 
@@ -44,7 +75,7 @@ export async function createPaymentIntent(
       }
     });
 
-    // Create booking record in database
+    // Create a booking record in our database
     await prisma.booking.create({
       data: {
         duration,
@@ -55,7 +86,6 @@ export async function createPaymentIntent(
       }
     });
 
-    
     if (!paymentIntent.client_secret) {
       throw new PaymentError('Missing client secret in payment intent');
     }
@@ -66,40 +96,97 @@ export async function createPaymentIntent(
     };
     
   } catch (error: unknown) {
-    // If the error is from our pricing calculation, throw it as is
     if (error instanceof Error && error.message === 'Invalid lesson duration') {
       throw error;
     }
-    
-    // Otherwise, wrap it in our PaymentError
     throw new PaymentError('Failed to create payment intent');
   }
-  
 }
 
+// Function to create a checkout session for Stripe Checkout
+export async function createCheckoutSession(
+  duration: number,
+  isPackage: boolean
+): Promise<CheckoutSessionResult> {
+  const amountInDollars = calculateAmount(duration, isPackage);
+  const amountInCents = Math.round(amountInDollars * 100);
 
+  try {
+    // Create the Stripe checkout session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          unit_amount: amountInCents,
+          product_data: {
+            name: `${duration}-Minute ${isPackage ? 'Lesson Package' : 'Music Lesson'}`,
+            description: isPackage ? '4 Lesson Package' : 'Single Lesson'
+          },
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      success_url: 'http://localhost:3000/success.html',
+      cancel_url: 'http://localhost:3000/cancel.html',
+    });
 
+    // Create a temporary ID that we can use to track this booking
+    const paymentIntentId = `temp_${session.id}`;
+
+    // Create the booking record with the temporary ID
+    await prisma.booking.create({
+      data: {
+        duration,
+        isPackage,
+        amount: amountInDollars,
+        paymentIntentId: paymentIntentId,
+        status: 'PENDING'
+      }
+    });
+
+    return { sessionId: session.id };
+  } catch (error) {
+    console.error('Checkout session creation error:', error);
+    throw new PaymentError('Failed to create checkout session');
+  }
+}
+
+// Function to handle webhook events from Stripe
 export async function handleStripeWebhook(event: StripeWebhookEvent): Promise<void> {
   const { type, data } = event;
-  const paymentIntent = data.object;
 
   try {
     switch (type) {
-      case 'payment_intent.succeeded':
-        await prisma.booking.update({
-          where: { paymentIntentId: paymentIntent.id },
-          data: { status: 'COMPLETED' }
-        });
+      case 'checkout.session.completed': {
+        // Cast the data to the correct type for TypeScript
+        const session = data.object as CheckoutSessionEvent['data']['object'];
+        if (session.payment_intent) {
+          // Update the booking with the real payment intent ID
+          await prisma.booking.updateMany({
+            where: { 
+              paymentIntentId: `temp_${session.id}`,
+              status: 'PENDING'
+            },
+            data: { 
+              paymentIntentId: session.payment_intent,
+              status: 'COMPLETED'
+            }
+          });
+        }
         break;
+      }
 
-      case 'payment_intent.payment_failed':
+      case 'payment_intent.payment_failed': {
+        const paymentIntent = data.object as PaymentIntentEvent['data']['object'];
+        // Update the booking status to failed
         await prisma.booking.update({
           where: { paymentIntentId: paymentIntent.id },
           data: { status: 'FAILED' }
         });
         break;
+      }
 
-      // We can add more webhook event types here as needed
       default:
         console.log(`Unhandled webhook event type: ${type}`);
     }
