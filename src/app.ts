@@ -8,6 +8,7 @@ const app = express();
 // Enable CORS
 app.use(cors());
 
+app.use(express.static('public'));
 // Parse JSON bodies for normal routes
 app.use(express.json());
 

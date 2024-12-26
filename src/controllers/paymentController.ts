@@ -1,16 +1,22 @@
 // src/controllers/paymentController.ts
 import { Request, Response } from 'express';
-import { createPaymentIntent, PaymentError, handleStripeWebhook, createCheckoutSession } from '../services/payment';
+import { 
+  createPaymentIntent, 
+  PaymentError, 
+  handleStripeWebhook, 
+  createCheckoutSession 
+} from '../services/payment';
 
+// Define the expected structure of our payment request
 interface CreatePaymentRequest {
   duration: number;
   isPackage: boolean;
 }
 
 export async function createPaymentController(req: Request, res: Response): Promise<void> {
+  // Extract and validate the request body according to our interface
   const { duration, isPackage } = req.body as CreatePaymentRequest;
 
-  // Check if duration exists and is one of our valid options
   if (!duration) {
     res.status(400).json({
       success: false,
@@ -19,7 +25,6 @@ export async function createPaymentController(req: Request, res: Response): Prom
     return;
   }
 
-  // Validate that duration is one of our accepted values
   if (![30, 45, 60].includes(duration)) {
     res.status(400).json({
       success: false,
@@ -28,7 +33,6 @@ export async function createPaymentController(req: Request, res: Response): Prom
     return;
   }
 
-  // isPackage should be a boolean
   if (typeof isPackage !== 'boolean') {
     res.status(400).json({
       success: false,
@@ -38,19 +42,14 @@ export async function createPaymentController(req: Request, res: Response): Prom
   }
 
   try {
-    // If validation passes, call payment service
     const paymentIntent = await createPaymentIntent(duration, isPackage);
-
-    // Send successful response with payment details
     res.json({
       success: true,
       clientSecret: paymentIntent.clientSecret,
       amount: paymentIntent.amount
     });
   } catch (error) {
-    // Handle different types of errors appropriately
     if (error instanceof PaymentError) {
-      // Known payment-related errors get a 400 status
       res.status(400).json({
         success: false,
         error: error.message
@@ -58,13 +57,62 @@ export async function createPaymentController(req: Request, res: Response): Prom
       return;
     }
 
-    // Log unexpected errors (in a real app, use proper logging)
-    //console.error('Payment creation error:', error);
-
-    // Unknown errors get a 500 status
     res.status(500).json({
       success: false,
       error: 'Failed to create payment'
+    });
+  }
+}
+
+export async function createCheckoutController(req: Request, res: Response): Promise<void> {
+  console.log('Received checkout request with body:', req.body);
+  const { duration, isPackage } = req.body;
+
+  // Validate the duration
+  if (!duration) {
+    res.status(400).json({
+      success: false,
+      error: 'Duration is required for the lesson booking'
+    });
+    return;
+  }
+
+  if (![30, 45, 60].includes(duration)) {
+    res.status(400).json({
+      success: false,
+      error: 'Please select a valid duration: 30, 45, or 60 minutes'
+    });
+    return;
+  }
+
+  if (typeof isPackage !== 'boolean') {
+    res.status(400).json({
+      success: false,
+      error: 'Please specify whether this is a package booking'
+    });
+    return;
+  }
+
+  try {
+    console.log('Creating checkout session for:', { duration, isPackage });
+    const session = await createCheckoutSession(duration, isPackage);
+    console.log('Created checkout session:', session);
+    
+    res.json({
+      success: true,
+      sessionId: session.sessionId,
+      message: 'Checkout session created successfully'
+    });
+  } catch (error) {
+    console.error('Detailed checkout error:', {
+      error,
+      requestBody: req.body,
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Unable to create checkout session. Please try again.'
     });
   }
 }
@@ -82,57 +130,13 @@ export async function webhookController(req: Request, res: Response): Promise<vo
   }
 
   try {
-    const event = payload;
-    await handleStripeWebhook(event);
+    await handleStripeWebhook(payload);
     res.json({ success: true });
   } catch (error) {
     console.error('Webhook error:', error);
     res.status(400).json({
       success: false,
       error: 'Failed to process webhook'
-    });
-  }
-}
-
-export async function createCheckoutController(req: Request, res: Response): Promise<void> {
-  const { duration, isPackage } = req.body;
-
-  // Validate input just like in our original controller
-  if (!duration) {
-    res.status(400).json({
-      success: false,
-      error: 'Duration is required'
-    });
-    return;
-  }
-
-  if (![30, 45, 60].includes(duration)) {
-    res.status(400).json({
-      success: false,
-      error: 'Invalid duration. Must be 30, 45, or 60 minutes'
-    });
-    return;
-  }
-
-  if (typeof isPackage !== 'boolean') {
-    res.status(400).json({
-      success: false,
-      error: 'isPackage must be a boolean value'
-    });
-    return;
-  }
-
-  try {
-    // Create the checkout session using our service
-    const session = await createCheckoutSession(duration, isPackage);
-    
-    // Return the session ID to the client
-    res.json({ sessionId: session.sessionId });
-  } catch (error) {
-    console.error('Checkout session creation error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create checkout session'
     });
   }
 }

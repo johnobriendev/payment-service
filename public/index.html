@@ -59,28 +59,51 @@
     </div>
 
     <script>
-        const stripe = Stripe('your_publishable_key_here');
-
+        const stripe = Stripe('pk_test_51QYssuJlorbEzekF8S2Atr5zRA3rPCMNFS2u2DdvoxfO6LgVG4VF4AsM6KzZBe4ny8QTfvA9ifP6s5KOouqaFWuB00YuGlnDZz'); 
+    
         async function bookLesson(duration, isPackage) {
             try {
+                console.log('Starting booking process:', { duration, isPackage });
+                
                 const response = await fetch('http://localhost:3000/api/payments/create-checkout', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ duration, isPackage })
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        duration,
+                        isPackage
+                    })
                 });
                 
-                const session = await response.json();
-                if (session.sessionId) {
-                    // Redirect to Checkout
-                    stripe.redirectToCheckout({ sessionId: session.sessionId });
+                console.log('Server response status:', response.status);
+                const result = await response.json();
+                console.log('Server response data:', result);
+
+                if (result.success && result.sessionId) {
+                    console.log('Attempting redirect with session ID:', result.sessionId);
+                    try {
+                        const { error } = await stripe.redirectToCheckout({
+                            sessionId: result.sessionId
+                        });
+                        
+                        if (error) {
+                            console.error('Stripe redirect error:', error);
+                            alert(`Payment error: ${error.message}`);
+                        }
+                    } catch (stripeError) {
+                        console.error('Stripe redirect exception:', stripeError);
+                        alert('Unable to redirect to payment page. Please check your connection and try again.');
+                    }
                 } else {
-                    alert(session.error);
+                    throw new Error(result.error || 'No session ID received');
                 }
             } catch (error) {
-                console.error('Error:', error);
-                alert('Error booking lesson. Please try again.');
+                console.error('Booking error:', error);
+                alert('Unable to process booking. Please try again later.');
             }
         }
+        
     </script>
 </body>
 </html>
