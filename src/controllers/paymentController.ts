@@ -1,17 +1,25 @@
 // src/controllers/paymentController.ts
 import { Request, Response } from 'express';
+ 
 import { 
   createPaymentIntent, 
   PaymentError, 
   handleStripeWebhook, 
-  createCheckoutSession 
+  createCheckoutSession,
+  cancelCheckoutSession 
 } from '../services/payment';
+
+
 
 // Define the expected structure of our payment request
 interface CreatePaymentRequest {
   duration: number;
   isPackage: boolean;
 }
+interface CancelSessionRequest {
+  sessionId: string;
+}
+
 
 export async function createPaymentController(req: Request, res: Response): Promise<void> {
   // Extract and validate the request body according to our interface
@@ -114,6 +122,46 @@ export async function createCheckoutController(req: Request, res: Response): Pro
       success: false,
       error: 'Unable to create checkout session. Please try again.'
     });
+  }
+}
+
+export async function cancelSessionController(req: Request, res: Response): Promise<void> {
+  const { sessionId } = req.body;
+
+  
+  if (!sessionId) {
+    res.status(400).json({
+      success: false,
+      error: 'Session ID is required'
+    });
+    return;
+  }
+
+  try {
+    // The service handles all the complex logic now
+    await cancelCheckoutSession(sessionId);
+    
+    // We just need to send back a success response
+    res.json({ 
+      success: true,
+      message: 'Session cancelled successfully'
+    });
+  } catch (error) {
+    // Handle errors based on their type
+    if (error instanceof PaymentError) {
+      // Business logic errors get a 400 status
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    } else {
+      // Unexpected errors get a 500 status
+      console.error('Unexpected error during session cancellation:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'An unexpected error occurred while cancelling the session' 
+      });
+    }
   }
 }
 

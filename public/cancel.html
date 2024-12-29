@@ -1,3 +1,4 @@
+<!-- public/cancel.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -15,13 +16,60 @@
             font-size: 24px;
             margin: 20px 0;
         }
+        #status-message {
+            margin: 20px 0;
+            padding: 10px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
-    <div class="cancel-message">
-        Payment Cancelled
-    </div>
-    <p>Your payment was cancelled. Would you like to try again?</p>
-    <a href="/">Return to Booking Page</a>
+    <div class="cancel-message">Payment Cancelled</div>
+    <div id="status-message">Processing cancellation...</div>
+    <a href="/" id="return-link" style="display: none;">Return to Booking Page</a>
+
+    <script>
+        // This function runs when the page loads
+        window.addEventListener('load', async () => {
+            const statusMessage = document.getElementById('status-message');
+            const returnLink = document.getElementById('return-link');
+            
+            try {
+                // Get the session ID from Stripe's redirect URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const sessionId = urlParams.get('session_id');
+                
+                if (!sessionId) {
+                    throw new Error('No session ID found in URL');
+                }
+
+                console.log('Attempting to cancel session:', sessionId);
+                
+                // Call our backend to cancel the session
+                const response = await fetch('/api/payments/cancel-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ sessionId })
+                });
+
+                const result = await response.json();
+                console.log('Cancellation result:', result);
+
+                if (result.success) {
+                    statusMessage.textContent = 'Your booking has been cancelled successfully.';
+                } else {
+                    throw new Error(result.error || 'Cancellation failed');
+                }
+            } catch (error) {
+                console.error('Error during cancellation:', error);
+                statusMessage.textContent = 'There was an issue processing your cancellation. You can safely return to the booking page.';
+            } finally {
+                // Show the return link regardless of the outcome
+                returnLink.style.display = 'block';
+            }
+        });
+    </script>
 </body>
 </html>

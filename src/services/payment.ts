@@ -3,8 +3,6 @@ import { PrismaClient } from '@prisma/client';
 import stripe from '../config/stripe';
 import { calculateAmount } from '../utils/pricing';
 
-// Interfaces to define the shape of our data structures
-// This interface defines what we return after creating a payment intent
 export interface PaymentIntentResult {
   clientSecret: string;
   amount: number;
@@ -128,11 +126,13 @@ export async function createCheckoutSession(
       }],
       mode: 'payment',
       success_url: 'http://localhost:3000/success.html',
-      cancel_url: 'http://localhost:3000/cancel.html',
+      cancel_url: `http://localhost:3000/cancel.html?session_id={CHECKOUT_SESSION_ID}`,
+      expires_at: Math.floor(Date.now() / 1000) + 1800,
     });
 
     // Create a temporary ID that we can use to track this booking
     const paymentIntentId = `temp_${session.id}`;
+    console.log('Creating booking with temporary ID:', paymentIntentId);
 
     // Create the booking record with the temporary ID
     await prisma.booking.create({
@@ -152,10 +152,49 @@ export async function createCheckoutSession(
   }
 }
 
+
+export async function cancelCheckoutSession(sessionId: string): Promise<void> {
+  try {
+    // First,try to expire the session in Stripe
+    
+    await stripe.checkout.sessions.expire(sessionId);
+    console.log('Stripe session expired:', sessionId);
+
+    // Then update database to reflect the cancellation
+   
+    const result = await prisma.booking.updateMany({
+      where: {
+        paymentIntentId: `temp_${sessionId}`,
+        status: 'PENDING'
+      },
+      data: {
+        status: 'CANCELLED'
+      }
+    });
+
+    console.log('Database update result:', result);
+
+    // If no booking was updated, something went wrong
+    if (result.count === 0) {
+      throw new PaymentError('No pending booking found for this session');
+    }
+
+    console.log('Booking marked as cancelled:', result);
+  } catch (error) {
+    console.error('Failed to cancel checkout session:', error);
+    
+    throw new PaymentError(
+      error instanceof Error 
+        ? `Failed to cancel checkout session: ${error.message}`
+        : 'Failed to cancel checkout session'
+    );
+  }
+}
+
 // Function to handle webhook events from Stripe
 export async function handleStripeWebhook(event: StripeWebhookEvent): Promise<void> {
   const { type, data } = event;
-
+  console.log('Received webhook event:', type); 
   try {
     switch (type) {
       case 'checkout.session.completed': {
@@ -174,6 +213,22 @@ export async function handleStripeWebhook(event: StripeWebhookEvent): Promise<vo
             }
           });
         }
+        break;
+      }
+
+      case 'checkout.session.expired': {
+        // Handle abandoned checkouts
+        console.log('Processing expired session:', data.object);
+        const session = data.object as CheckoutSessionEvent['data']['object'];
+        await prisma.booking.updateMany({
+          where: {
+            paymentIntentId: `temp_${session.id}`,
+            status: 'PENDING'
+          },
+          data: {
+            status: 'CANCELLED'
+          }
+        });
         break;
       }
 
