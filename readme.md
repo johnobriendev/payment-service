@@ -46,7 +46,7 @@ npm install
 
 3. Create a `.env` file in the project root:
 ```env
-DATABASE_URL="postgresql://user:password@localhost:5432/payment_db"
+DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
 STRIPE_SECRET_KEY="your_stripe_secret_key"
 STRIPE_WEBHOOK_SECRET="your_stripe_webhook_secret"
 ```
