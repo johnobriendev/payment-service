@@ -4,9 +4,23 @@ import { handleStripeWebhook } from '../../services/payment';
 import { v4 as uuidv4 } from 'uuid';
 
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.TEST_DATABASE_URL
+    }
+  }
+});
+
+
+
 
 describe('Webhook Handling', () => {
+  beforeAll(async () => {
+    // Ensure we're using test database
+    process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+  });
+  
   beforeEach(async () => {
     await prisma.booking.deleteMany();
   });

@@ -1,7 +1,14 @@
+//src/__tests__/integratio/booking.test.ts
 import { PrismaClient } from '@prisma/client';
 import { calculateAmount } from '../../utils/pricing';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.TEST_DATABASE_URL
+    }
+  }
+});
 
 describe('Booking Integration', () => {
   beforeEach(async () => {

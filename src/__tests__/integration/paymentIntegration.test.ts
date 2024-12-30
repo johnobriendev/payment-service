@@ -11,9 +11,21 @@ jest.mock('../../config/stripe', () => ({
   }
 }));
 
-const prisma = new PrismaClient();
+
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.TEST_DATABASE_URL
+    }
+  }
+});
 
 describe('Payment Integration', () => {
+  beforeAll(async () => {
+    // Ensure we're using test database
+    process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+  });
+  
   beforeEach(async () => {
     // Clear database before each test
     await prisma.booking.deleteMany();
